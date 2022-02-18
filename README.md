@@ -20,9 +20,10 @@ In this project, on the base of the competition held on Kaggle, which is challen
 
 ## Data 
   1. Taxi trip data in NY-2016 download from Kaggle.  
-  2. Weather data in NY-2016, extracted from API and Kaggle.  
-  3. New York neighborhood and census tract data.  
-  4. ACS demographical data, which could be useful in model building.  
+     Because the trip data is too large to upload on github, I provided the [link on Kaggle](https://www.kaggle.com/wti200/exploratory-analysis-nyc-taxi-trip#load) of it here.
+  3. Weather data in NY-2016, extracted from API and Kaggle.  
+  4. New York neighborhood and census tract data.  
+  5. ACS demographical data, which could be useful in model building.  
 
 
 ## Research method
