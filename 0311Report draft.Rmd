@@ -56,7 +56,7 @@ library(knitr)
 library(mapview)
 library(kableExtra)
 library(RSocrata)
-
+library(ggcorrplot)
 library(gifski)
 library(RSocrata)
 library(spatstat)
@@ -64,8 +64,8 @@ library(raster)
 library(spdep)
 library(FNN)
 library(gganimate)
-
-
+library(corrplot)
+library(RColorBrewer)
 library(ggmap)
 library(gmapsdistance)
 
@@ -108,9 +108,9 @@ palette2 <- c("#6baed6","#08519c")
 
 options(tigris_class = "sf")
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
-#setwd("D:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
+setwd("D:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
 
-setwd("C:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
+#setwd("C:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
 ```
 
 
@@ -369,7 +369,7 @@ Although the original data set has provided trip duration in each row, however, 
   taxitrip$check <- ifelse(taxitrip$trip_duration == taxitrip$duration,TRUE,FALSE)
 ```
 
-### 2.3.2 Cleaning dataset
+### 2.3.2 Cleaning taxitrip dataset
 In this section, I'm going to clean the full taxi trip data set,filter out strange outliers that might affect the accuracy of the prediction. The below statistical summary of the data can help me identify any obvious outliers
 ```{r cleaning, message = FALSE, warning = FALSE}
 kable(summary(taxitrip),format = "html")%>%
@@ -407,6 +407,12 @@ record_Removed <- nrow(taxitrip)-nrow(taxitrip_clean)
 record_Removed_pct <- (nrow(taxitrip)-nrow(taxitrip_clean))/nrow(taxitrip)
 paste(record_Removed_pct*100, "%", sep='')
 
+
+taxitrip_clean <- taxitrip_clean %>%
+        mutate(time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "Morning Rush Hour",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "Afternoon Rush Hour"))
 ```
 
 Summary of cleaned trip data.
@@ -426,47 +432,166 @@ taxitrip_sample <- sample_n(taxitrip_clean, 100000)
 ```
 
 #### Trip data sample mapping
-Observing from the
+Observing from the map,it shows point geometry scattered around city, it is obvious that Manhattan Island and Brooklyn of NYC burdens pretty much higher taxi ride demand. And drop off locations spreads farther than pick up locations.
 ```{r}
-taxitrip_sample_geom <- taxitrip_sample%>%
+taxitrip_sample_geom_dropoff <- taxitrip_sample%>%
   st_as_sf(coords = c("dropoff_longitude","dropoff_latitude"), crs = 4326, agr = "constant")
 
-ggplot()+
+taxitrip_sample_geom_pickup <- taxitrip_sample%>%
+  st_as_sf(coords = c("pickup_longitude","pickup_latitude"), crs = 4326, agr = "constant")
+
+dropoff <- ggplot()+
   geom_sf(data = NY_Tracts)+
-  geom_sf(data = taxitrip_sample_geom, show.legend = "point", size= .5, alpha = 0.5,color="#df65b0") +
-  labs(title = "Taxi trip general map", subtitle = "random sample of 100000 records") +
+  geom_sf(data = taxitrip_sample_geom_dropoff, show.legend = "point", size= .5, alpha = 0.5,color="#df65b0") +
+  labs(title = "Taxi trip general map - dropoff location", subtitle = "random sample of 100000 records") +
   mapTheme() + 
-  theme(plot.title = element_text(size=22))
+  theme(plot.title = element_text(size=20))
+
+pickup <- ggplot()+
+  geom_sf(data = NY_Tracts)+
+  geom_sf(data = taxitrip_sample_geom_pickup, show.legend = "point", size= .5, alpha = 0.5,color="#3182bd") +
+  labs(title = "Taxi trip general map - pickup location", subtitle = "random sample of 100000 records") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=20))
+
+grid.arrange(dropoff,pickup, nrow = 1)
 ```
-#### Taxitrip duration histogram
-Learning from the histogram, the count of trip duration shows a long skew as the time consumption goes up.
+#### Univariate Analysis 
+  + For target variable **trip_duration**
+Learning from the histogram, the count of trip duration shows a long skew as the time consumption goes up. But if I use log transfermation to the trip duration, it shows a normal distribution pattern.
 ```{r}
-taxitrip_sample %>%
+original_his <- taxitrip_sample %>%
   ggplot(aes(trip_duration)) +
-  geom_histogram(color = "#8856a7",fill = "#f1eef6", bins = 150) 
+  geom_histogram(color = "#8856a7",fill = "#f1eef6", bins = 150) +
+    plotTheme()
 
 
-taxitrip_sample %>%
+log_his <- taxitrip_sample %>%
   ggplot(aes(trip_duration)) +
   geom_histogram(color = "#8856a7",fill = "#f1eef6", bins = 150) +
   scale_x_log10() +
-  scale_y_sqrt()
+  scale_y_sqrt()+
+    plotTheme()
+
+grid.arrange(original_his,log_his, nrow = 1)
 ```
 
-
-
-
-
+  + For target variable **passenger_count**
+Since the box plot of trip duration originally shows toooo many outliers, I made comparison between 
 ```{r}
-ggplot(taxitrip_clean,aes(as.factor(passenger_count), trip_duration, color = passenger_count))+
+normal_passct <- ggplot(taxitrip_clean,aes(x=as.factor(passenger_count), y=trip_duration, color = passenger_count))+
 geom_boxplot() +
-    scale_y_log10() +
     theme(legend.position = "none") +
-    labs(title = "Trip Duration by Number of Passengers", x = "Number of passengers",y= "Trip duration")
+    labs(title = "Trip Duration by Number of Passengers", x = "Number of passengers",y= "Trip duration")+
+    plotTheme()
+
+
+log_passct <- ggplot(taxitrip_clean,aes(x=as.factor(passenger_count), y=trip_duration, color = passenger_count))+
+geom_violin() +
+  scale_y_log10() + theme(legend.position = "none") +
+    labs(title = "Log of Trip Duration by Number of Passengers", x = "Number of passengers",y= "Trip duration")+
+    plotTheme()
+
+
+grid.arrange(normal_passct,log_passct, nrow = 1)
 ```
 
 
-## 2.4 Import weather data
+  + For target variable **store_and_fwd_flag**
+  This is a binary variable indicates whether the trip record was held in vehicle memory before sending to the vendor because the vehicle did not have a connection to the server,where Y=store and forward; N=not a store and forward trip.
+```{r}
+taxitrip_sample %>% 
+  group_by(store_and_fwd_flag) %>% 
+  count() %>% 
+  ggplot(aes(x=store_and_fwd_flag,y=n, fill=store_and_fwd_flag))+ 
+  geom_col()+
+  scale_fill_manual(values = palette2)+
+    plotTheme()
+```
+
+ + For target variable **Check or not**
+  This is a binary variable indicates whether the trip duration provided by the original dataset is true or not.Learning from the plot, it is **one hundred percent** that the trip duration is correct with the calculation from the time stamp.
+```{r}
+taxitrip_sample %>% 
+  group_by(check) %>% 
+  count() %>% 
+  ggplot(aes(x=check,y=n, fill=check))+ 
+  geom_col()+
+  scale_fill_manual(values = palette2)+
+    plotTheme()
+```
+  + For target variable **distance**
+```{r}
+dis <- taxitrip_sample%>%
+  ggplot(aes(x = WeekDay, y = distance)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Distance', title = 'Distance by day of a week')+
+    plotTheme()
+
+meandis <- taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  summarize(distancemean = mean(distance))%>%
+  ggplot(aes(x = WeekDay, y = distancemean)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean distance', title = 'Mean distance by day of a week')+
+    plotTheme()
+
+grid.arrange(dis,meandis, nrow = 1)
+```
+
+  + For target variable **Hour in a day**
+```{r}
+count <- taxitrip_sample%>%
+  group_by(hour)%>%
+  count()%>%
+  ggplot(aes(x = hour, y = n)) +
+  geom_bar(stat = 'identity', fill = 'steelblue') +
+  labs(x = 'Hour', y = 'trip counts', title = 'Trip count by hour in a day')+
+    plotTheme()
+
+meandur <- taxitrip_sample%>%
+  group_by(hour)%>%
+  mutate(duration = mean(trip_duration))%>%
+  dplyr::select(hour,duration)%>%
+  ggplot(aes(x = hour, y = duration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Hour', y = 'Mean of trip duration', title = 'Mean Trip duration by hour in a day')+
+    plotTheme()
+
+grid.arrange(count,meandur, nrow = 1)
+
+taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  summarize(meanduration = mean(trip_duration))%>%
+  ggplot(aes(x = WeekDay, y = meanduration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean duration', title = 'Mean duration by day of a week')+
+    plotTheme()
+```
+  + For target variable **time_of_day**
+```{r}
+ taxitrip_sample%>%
+  group_by(time_of_day)%>%
+  ggplot(aes(x =time_of_day, y = duration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean distance', title = 'Mean distance by day of a week')+
+    plotTheme()
+```
+  + For target variable **Weekday in a week**
+```{r}
+ taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  count()%>%
+  ggplot(aes(x =WeekDay, y = n)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Trip count', title = 'Trip count by day of a week')+
+    plotTheme()
+```
+
+
+
+# 3.External Data
+## 3.1 Import weather data
 ```{r}
 weather.Data <- 
   riem_measures(station = "NYC", date_start = "2016-01-01", date_end = "2016-06-30")
@@ -483,23 +608,24 @@ weather.Data.clean <- weather.Data%>%
               Wind_Speed = max(sknt)) %>%
     mutate(Temperature = ifelse(Temperature == 0, 42, Temperature))
 
+grid.arrange(top = "Weather Data - NYC - Jan & June, 2016",
+  ggplot(weather.Data.clean, aes(interval60,Precipitation)) + geom_line(colour = "#045a8d") + 
+    labs(title="Percipitation", x="Hour", y="Percipitation") + plotTheme(),
+  ggplot(weather.Data.clean, aes(interval60,Wind_Speed)) + geom_line(colour = "#045a8d") + 
+    labs(title="Wind Speed", x="Hour", y="Wind Speed") + plotTheme(),
+  ggplot(weather.Data.clean, aes(interval60,Temperature)) + geom_line(colour = "#045a8d") + 
+    labs(title="Temperature", x="month", y="Temperature") + plotTheme())
+
 ```
 
 
-
-
-
-
-
-   + `TotalPop`: Total population in each census tract 
-   + `Whites`: White population in each census tract
 
 
 ```{r}
 sf_use_s2(FALSE)
 
 
-trip_join_census <- st_join(taxitrip_clean %>% 
+trip_join_census <- st_join(taxitrip_sample %>% 
           filter(is.na(pickup_latitude) == FALSE &
                    is.na(pickup_longitude) == FALSE &
                    is.na(dropoff_latitude) == FALSE &
@@ -525,4 +651,129 @@ trip_join_census <- st_join(taxitrip_clean %>%
 
 ```
 
+
+
+```{r}
+trip_join_census %>%
+         group_by(interval60, pickup.Tract, time_of_day) %>%
+         tally()%>%
+  group_by(pickup.Tract, time_of_day)%>%
+  summarize(mean_trips = mean(n))%>%
+  ggplot()+
+  geom_histogram(aes(mean_trips), binwidth = 0.5)+
+  labs(title="Total Number of Hourly Trips Per Station. Chicago, May, 2018",
+       x="Number of trips", 
+       y="Frequency")+
+ facet_wrap(~time_of_day)+
+  plotTheme()
+```
+
+join `weather panel` with `census and trip panel`.
+
+```{r}
+ride.panel <- 
+  trip_join_census %>%
+  left_join(weather.Data.clean) %>%
+  filter(is.na(pickup.Tract) == FALSE) %>%
+  mutate(week = week(interval60),
+         dotw = lubridate::wday(interval60, label = TRUE)) %>%
+  filter(is.na(dropoff.Tract) == FALSE)
+
+ride.panel<- 
+  inner_join(ride.panel, clean_trancts_2016 %>%
+              as.data.frame()%>%
+              dplyr::select(-geometry), by = c("pickup.Tract" = "GEOID"))
+
+a <-na.omit(ride.panel)
+            
+```
+
+
+
+# Correlation between trip duration and features
+```{r}
+a%>%
+  dplyr::select(-RowID,-id,-pickup_latitude,-pickup_longitude,-pickup_datetime,-dropoff_latitude,-dropoff_longitude,-dropoff_datetime,-store_and_fwd_flag,-weekend,-WeekDay,-duration,-check,-time_of_day,-pickup.Tract,-dropoff.Tract,-vendor_id,)%>%
+  gather(Variable, Value, -trip_duration) %>% 
+   ggplot(aes(Value, trip_duration)) +
+     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, ncol = 3, scales = "free") +
+     labs(title = "trip duration as a function of continuous variables") +
+     plotTheme()
+
+
+numericVars <- 
+  select_if(ride.panel, is.numeric) %>% na.omit()%>%
+  dplyr::select(-RowID,-pickup_latitude,-pickup_longitude,-dropoff_latitude,-dropoff_longitude,-vendor_id,-duration)
+
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
+
+
+
+corrplot(round(cor(numericVars), 1),p.mat = cor_pmat(numericVars), type = "lower", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+```{r}
+ride.panel %>%
+  mutate(Trip_Counter = 1) %>%
+    group_by(dotw,Precipitation) %>% 
+  summarize(Trip_Count = sum(Trip_Counter),
+            Percipitation = first(Precipitation)) %>%
+  filter(is.na(Percipitation)==FALSE)%>%
+  group_by(Trip_Count,Percipitation)%>%
+  mutate(isPercip = ifelse(Percipitation > 0,"Rain/Snow", "None")) %>%
+  group_by(isPercip) %>%
+  summarize(Mean_Trip_Count = mean(Trip_Count)) %>%
+    ggplot(aes(isPercip, Mean_Trip_Count)) + geom_bar(stat = "identity") +
+      labs(title="Does ridership vary with percipitation?",
+           x="Percipitation", y="Mean Trip Count") +
+      plotTheme()
+```
+
+
+# Model building
+
+```{r}
+inTrain <- createDataPartition(
+              y = paste(ride.panel$trip_duration), 
+              p = .75, list = FALSE)
+trip.training <- ride.panel[inTrain,] 
+trip.test <- ride.panel[-inTrain,]
+```
+
+
+
+```{r}
+reg1 <- 
+  lm(trip_duration ~  Precipitation + dotw + Temperature + weekend,  data=trip.training)
+
+
+trip.Test.weekNest <- 
+  trip.training %>%
+  nest(-week) 
+
+
+model_pred <- function(dat, fit){
+   pred <- predict(fit, newdata = dat)}
+
+
+week_predictions <- 
+  trip.Test.weekNest %>% 
+    mutate(A_Time_FE = map(.x = data, fit = reg1, .f = model_pred))%>% 
+    gather(Regression, Prediction, -data, -week) %>%
+    mutate(Observed = map(data, pull, trip_duration),
+           Absolute_Error = map2(Observed, Prediction,  ~ abs(.x - .y)),
+           MAE = map_dbl(Absolute_Error, mean, na.rm = TRUE),
+           sd_AE = map_dbl(Absolute_Error, sd, na.rm = TRUE))
+
+week_predictions
+```
+ 
  

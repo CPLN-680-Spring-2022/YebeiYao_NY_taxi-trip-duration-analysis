@@ -1,0 +1,790 @@
+---
+title: "New york ride"
+author: "yybei"
+date: "2022/2/18"
+output: 
+  html_document:
+    css: bootstrap.min.css
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+# 1. Introduction
+In this project,I'd like to focus on Spatial problem of space & time taxi ride demand and time consumption for each taxi trip in New York.
+
+## 1.1 Set up
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+```
+
+```{r setup_13, cache=TRUE, message=FALSE}
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(tigris)
+library(tidycensus)
+library(viridis)
+library(riem)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(caret)
+library(RSocrata)
+library(data.table)
+library(pacman)
+library(geosphere)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+library(leaflet)
+library(stringr)
+library(rgdal)
+library(mapview)
+library(dplyr)
+library(geodist)
+library(lubridate)
+library(tigris)
+library(viridis)
+library(riem)
+library(gridExtra)
+library(knitr)
+library(mapview)
+library(kableExtra)
+library(RSocrata)
+library(ggcorrplot)
+library(gifski)
+library(RSocrata)
+library(spatstat)
+library(raster)
+library(spdep)
+library(FNN)
+library(gganimate)
+library(corrplot)
+library(RColorBrewer)
+library(ggmap)
+library(gmapsdistance)
+
+plotTheme <- theme(
+  plot.title =element_text(size=12),
+  plot.subtitle = element_text(size=8),
+  plot.caption = element_text(size = 6),
+  axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+  axis.text.y = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  # Set the entire chart region to blank
+  panel.background=element_blank(),
+  plot.background=element_blank(),
+  #panel.border=element_rect(colour="#F0F0F0"),
+  # Format the grid
+  panel.grid.major=element_line(colour="#D0D0D0",size=.2),
+  axis.ticks=element_blank())
+
+mapTheme <- theme(plot.title =element_text(size=12),
+                  plot.subtitle = element_text(size=8),
+                  plot.caption = element_text(size = 6),
+                  axis.line=element_blank(),
+                  axis.text.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks=element_blank(),
+                  axis.title.x=element_blank(),
+                  axis.title.y=element_blank(),
+                  panel.background=element_blank(),
+                  panel.border=element_blank(),
+                  panel.grid.major=element_line(colour = 'transparent'),
+                  panel.grid.minor=element_blank(),
+                  legend.direction = "vertical", 
+                  legend.position = "right",
+                  plot.margin = margin(1, 1, 1, 1, 'cm'),
+                  legend.key.height = unit(1, "cm"), legend.key.width = unit(0.2, "cm"))
+
+palette5 <- c("#eff3ff","#bdd7e7","#6baed6","#3182bd","#08519c")
+palette4 <- c("#D2FBD4","#92BCAB","#527D82","#123F5A")
+palette2 <- c("#6baed6","#08519c")
+
+options(tigris_class = "sf")
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+setwd("D:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
+
+#setwd("C:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis")
+```
+
+
+# 2.Load data
+## 2.1 Load census data
+Considering taxi ride is a kind of commuting method, the commuting pattern of public transit should be potential factors to taxi trip time consumption and taxi demand around city. So I selected several features that should play an importance to the taxi trip for further model building. 
+
+Those features are census data like population in each census tract of travel time to work by different means of transport method. The race composition and house rent in each tract. Those features are likely to play great infection on taxi trip.
+
+
+```{r get_census, message=FALSE, warning=FALSE, cache=TRUE, results = 'hide'}
+# Install Census API Key
+census_api_key("e79f3706b6d61249968c6ce88794f6f556e5bf3d", overwrite = TRUE)
+
+# Import Census Info,especially commmuting data.
+tracts16 <-  
+  get_acs(geography = "tract", variables = c("B08301_001", #Means Of Transportation To Work,total
+                                             "B08301_002", #Means Of Transportation To Work,Car, truck, or van,
+                                             "B08301_010", #Means Of Transportation To Work, public transit
+                                             "B08301_016", #Means Of Transportation To Work, taxicab
+                                             
+                #travel time to work ----public transit        
+                                            
+                                             "B08134_067",  #pub Travel time to work, 30-35 min
+                                             "B08134_068",  #pub Travel time to work, 35-45 min
+                                             "B08134_069",  #pub Travel time to work, 45-60 min
+                                             "B08134_070",  #pub Travel time to work, >60 min
+                
+                 #travel time to work ----ride(car)        
+                                            
+                                             "B08134_017",  #car Travel time to work, 30-35 min
+                                             "B08134_018",  #car Travel time to work, 35-45 min
+                                             "B08134_019",  #car Travel time to work, 45-60 min
+                                             "B08134_020",  #car Travel time to work, >60 min
+                
+                #travel time to work ----ride(taxi)        
+                                            
+                                             "B08134_117",  #taxi Travel time to work, 30-35 min
+                                             "B08134_118",  #taxi Travel time to work, 35-45 min
+                                             "B08134_119",  #taxi Travel time to work, 45-60 min
+                                             "B08134_120",  #taxi Travel time to work, >60 min
+                                             
+                                            
+                                             "B01003_001",   #Total Population
+                                             "B19013_001",   #Median Household Income In The Past 12 Months
+                                             "B01002_001",   #Median Age
+                                             "C15010_001",   #Bachelor Degree or above
+                                             
+                #Race                        
+                                             "B02001_002", #White people
+                                             "B02001_003", #Black Or African American Alone
+                                             "B02001_004", #American Indian And Alaska Native Alone
+                                             "B02001_005", #Asian
+                                             
+                                             "B08111_017", #Num_Public Transportation_native
+                                             "B08111_018",  #Num_Public Transportation_Foreign born
+                
+                #rent
+                                              "B25059_001", #Upper Contract Rent
+                                              "B25057_001", #Lower Contract Rent
+                                              "B17005_002", #Income below poverty level
+                                              "B16010_003", # less than high school, in labor force
+                                              "B16010_016" ), # high school, in labor force
+                year=2016, state=36, geometry=T,output = "wide")
+                
+
+tracts2016 <- tracts16%>%
+  
+   rename( Total_means_towork = B08301_001E,
+           Car_towork = B08301_002E,
+           Public_trans_towork = B08301_010E,
+           Taxicab_towork = B08301_016E,
+           
+     
+          pub_traveltime_30_35 = B08134_067E,
+          pub_traveltime_35_45 = B08134_068E,
+          pub_traveltime_45_60 = B08134_069E,
+          pub_traveltime_60 = B08134_070E,
+          
+          car_traveltime_30_35 = B08134_017E,
+          car_traveltime_35_45 = B08134_018E,
+          car_traveltime_45_60 = B08134_019E,
+          car_traveltime_60 = B08134_020E,
+          
+          taxi_traveltime_30_35 = B08134_117E,
+          taxi_traveltime_35_45 = B08134_118E,
+          taxi_traveltime_45_60 = B08134_119E,
+          taxi_traveltime_60 = B08134_120E,
+          
+          
+          Total_Pop =  B01003_001E,
+          Median_income = B19013_001E,
+          Median_age = B01002_001E,
+          Bachelor_above = C15010_001E,
+          
+          White_American = B02001_002E,
+          Black_American = B02001_003E,
+          American_Indian = B02001_004E,
+          Asian = B02001_005E,
+          
+          public_trans_native = B08111_017E,
+          public_trans_foreign = B08111_018E,
+          
+          upper_rent = B25059_001E,
+          lower_rent = B25057_001E,
+          income_below_poverty = B17005_002E,
+          belowhigh_onemploy = B16010_003E,
+          abovehigh_onemploy = B16010_016E)%>%
+  
+  dplyr::select(Total_means_towork,Car_towork,Public_trans_towork,Taxicab_towork,
+         
+         pub_traveltime_30_35,pub_traveltime_35_45,pub_traveltime_45_60,pub_traveltime_60,
+         car_traveltime_30_35,car_traveltime_35_45,car_traveltime_45_60,car_traveltime_60,
+         taxi_traveltime_30_35,taxi_traveltime_35_45,taxi_traveltime_45_60,taxi_traveltime_60,
+         
+         Total_Pop,Median_income,Median_age,Bachelor_above,
+         White_American,Black_American,American_Indian,Asian,
+         public_trans_native,public_trans_foreign,
+         upper_rent,lower_rent,income_below_poverty,belowhigh_onemploy,abovehigh_onemploy,
+         GEOID,NAME,geometry)
+
+
+
+clean_trancts_2016 <- tracts2016%>%
+    st_transform('ESRI:102318')%>%
+  mutate(Pct_publictrans_towork = Public_trans_towork / Total_means_towork,
+         Pct_ride_towork = (Car_towork+Taxicab_towork) / Total_means_towork,
+         pub_traveltime_30_60 = pub_traveltime_30_35 + pub_traveltime_35_45 + pub_traveltime_45_60,
+         ride_traveltime_30_60 = car_traveltime_30_35 + car_traveltime_35_45 + car_traveltime_45_60 +
+                                taxi_traveltime_30_35 + taxi_traveltime_35_45 + taxi_traveltime_45_60,
+         ride_traveltime_60 = car_traveltime_60 + taxi_traveltime_60,
+         pct_bachelor = Bachelor_above / Total_Pop,
+         pct_white = White_American / Total_Pop,
+         pct_black = Black_American / Total_Pop,
+         pct_indian = American_Indian / Total_Pop,
+         pct_asian = Asian / Total_Pop,
+         pct_poverty = income_below_poverty / Total_Pop,
+         pct_onemployment = (belowhigh_onemploy + abovehigh_onemploy) / Total_Pop,
+         pct_pubtrans_native = public_trans_native / Public_trans_towork,
+         pct_pubtrans_foreign = public_trans_foreign / Public_trans_towork
+          )%>%
+  dplyr::select (-Total_means_towork,-Car_towork,-Public_trans_towork,-Taxicab_towork,
+                 -pub_traveltime_30_35,-pub_traveltime_35_45,-pub_traveltime_45_60,
+                 -car_traveltime_30_35,-car_traveltime_35_45,-car_traveltime_45_60,-car_traveltime_60,
+                 -taxi_traveltime_30_35,-taxi_traveltime_35_45,-taxi_traveltime_45_60,-taxi_traveltime_60,
+                 -Bachelor_above,
+                 -White_American,-Black_American,-American_Indian,-Asian,
+                 -public_trans_native,-public_trans_foreign,
+                 -income_below_poverty,-belowhigh_onemploy,-abovehigh_onemploy
+                 )
+
+```
+
+## 2.2 Load base geometry
+
+I'm going to take census tract as the unit of analysis.
+And the boundary of the analysis takes the border of New York City.I'm going to filter out the taxi trips happen outside the border later on.
+
+```{r boundary,warning = FALSE, message = FALSE}
+
+NYC_boundary <- st_read("Raw data/NYC Borough Boundaries.geojson")%>% st_transform('ESRI:102318')
+
+clean_trancts_2016_only <- st_intersection(clean_trancts_2016,st_union(NYC_boundary))
+
+
+NY_Tracts <- 
+  clean_trancts_2016_only %>%
+  as.data.frame() %>%
+  distinct(GEOID, .keep_all = TRUE) %>%
+  dplyr::select(GEOID, geometry) %>% 
+  st_sf
+
+NY_Tracts <- NY_Tracts %>%
+          st_transform(crs = 4326)
+
+```
+
+
+##  2.3 Load and wrangle taxi trip data
+### 2.3.1 Processing taxi trip data
+#### Transfer data type
+In this section, I imported taxi trip data and made several basic processing work.
+First, I transferred the data column property. 
+At beginning, all the columns are in character type, which means although the value shows in numeric or time form, it can not be recognized in specific form. So I transferred longitude, latitude from character into numeric, and the pickup and dropoff time into "timestamp" form.
+In this way, I can easily map the start and end location in point geometry form, and extract detailed time property like hour in a day, or weekday in a week for further analysis.
+
+```{r ridership,warning = FALSE, message = FALSE}
+taxitrip <- st_read("Raw data/NY-Ridership.csv")
+
+
+taxitrip$passenger_count <-as.numeric(taxitrip$passenger_count)
+taxitrip$trip_duration <-as.numeric(taxitrip$trip_duration)
+
+  taxitrip$vendor_id <-as.numeric(taxitrip$vendor_id)
+  taxitrip$dropoff_longitude <-as.numeric(taxitrip$dropoff_longitude)
+  taxitrip$dropoff_latitude <-as.numeric(taxitrip$dropoff_latitude)
+  taxitrip$pickup_longitude <-as.numeric(taxitrip$pickup_longitude)
+  taxitrip$pickup_latitude <-as.numeric(taxitrip$pickup_latitude)
+  
+
+
+taxitrip <- taxitrip %>%
+  mutate(pickup_datetime = ymd_hms(pickup_datetime),
+         dropoff_datetime = ymd_hms(dropoff_datetime))
+
+```
+
+#### Calculate distance
+Calculate distance of each trip. 
+```{r distance, message = FALSE, warning = FALSE}
+startpoint <- st_as_sf(x = taxitrip, coords = c('pickup_longitude', 'pickup_latitude'), crs = 4326)%>%
+  mutate( id = row_number() )
+endpoint <- st_as_sf(x = taxitrip, coords = c('dropoff_longitude', 'dropoff_latitude'), crs = 4326)%>%
+  mutate( id = row_number() )
+
+start <- taxitrip%>% dplyr::select('pickup_longitude', 'pickup_latitude')
+end <-  taxitrip%>% dplyr::select('dropoff_longitude', 'dropoff_latitude')
+
+dis <- geodist_vec(
+  start$pickup_longitude,
+  start$pickup_latitude,
+  end$dropoff_longitude,
+  end$dropoff_latitude,
+  paired = TRUE,
+  sequential = FALSE,
+  pad = FALSE,
+  measure = "vincenty"
+)%>%
+  as.data.frame()%>%
+  mutate( RowID = row_number() )
+
+taxitrip <- taxitrip%>%mutate( RowID = row_number() )
+  
+taxitrip <- left_join(taxitrip,dis,by="RowID")%>%
+  rename(distance = ".")
+
+```
+
+#### parse time properties
+Mutate new columns into taxitrip dataset, to extract time property such as weeks, hours, and weekday.
+```{r timeparse, message = FALSE, warning = FALSE}
+ taxitrip<- taxitrip %>% 
+  mutate(interval60 = floor_date(ymd_hms(pickup_datetime), unit = "hour"),
+         week = week(interval60),
+         hour = hour(interval60),
+         WeekDay = lubridate::wday(interval60, label=TRUE))
+
+  taxitrip$weekend <- ifelse(taxitrip$WeekDay =="周六" |taxitrip$WeekDay == "周日","Weekend","not-Weekend")
+```
+
+#### check the current duration
+Although the original data set has provided trip duration in each row, however, since the time consumption is the key dependent variable for our prediction model, it is necessary to check if the duration provided is true or false. The safest way is to calculate the time interval between pickup time and dropoff time manually and to make comparison to the existing trip duration, in this way, we can see if the existing trip duration match the calculation result or not. Learning from the checking result, it shows all the duration equals the calculation between pick up and drop off interval.
+```{r check, message = FALSE, warning = FALSE}
+  taxitrip <- taxitrip %>%
+  mutate(duration = as.numeric(abs(int_length(interval(dropoff_datetime,pickup_datetime)))))
+  taxitrip$check <- ifelse(taxitrip$trip_duration == taxitrip$duration,TRUE,FALSE)
+```
+
+### 2.3.2 Cleaning taxitrip dataset
+In this section, I'm going to clean the full taxi trip data set,filter out strange outliers that might affect the accuracy of the prediction. The below statistical summary of the data can help me identify any obvious outliers
+```{r cleaning, message = FALSE, warning = FALSE}
+kable(summary(taxitrip),format = "html")%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  kable_classic(full_width = T, html_font = "Cambria")
+```
+
+Learning from the above summary table, we can see that some of the feature has shown strange pattern and should be removed for good.
+  * **id**: original id is a set of distinct character that represent each individual trips.
+  * **vendor_id**: There are 2 unique,from which the minimum value is 1 and the maximum value is 2, which makes sense as we saw there are only two vendor ids 1 and 2.
+  * **passenger_count**: There are 9 unique passenger counts.However, the minimum value of passenger count is 0 while the maximum value of passenger count is 10, which is impossible! Firstly,all the trip should have at least one passenger, or the trip will not count, so I should **remove any trip that has none passenger**, where should be some error happens. Secondly, according to the NYC Taxi&Limousine Commission, the maximum number of people, by law is five passengers in one taxicab. Considering the condition that there are passengers under the age of 7 and doesn't take any space and prefer sitting on adults' leg. The maximum passenger of each trip should be 7. So I have to remove any trip record that has passengers **higher than 7**.
+  * **Lon and Lat**: No matter the long or lat of pick-up and drop-off location, the trip should be happened inside the boundary of New York City,According to coordinate system, **the Latitude should lie between 40.4775 and 40.9147, while Longitude should lie between - 74.2782 and - 73.7062.** So I have to remove any trips that has those four features locates outside the coordinate range.
+  * **store_and_fwd_flag**: This flag indicates whether the trip record was held in vehicle memory before sending to the vendor because the vehicle did not have a connection to the server - Y=store and forward; N=not a store and forward trip.
+  * **trip_duration**: duration of the trip in seconds.According to the summary,the maximum duration of trip is 3526282 seconds,converting to hours is 980 hours. If this time is really the trip time consumption, it could be ridiculous. Maybe it's because the owner of the taxi forgot to turn off the meter before he leave the car for a long time. In this case, it will be helpful to **remove any trip that has time duration more than two standard deviations away from the mean duration time**, which means about 95% of values will be within 2 standard deviations of the mean.
+  * **distance**: geographic distance between two co-ordinates
+  
+  After all the cleaning work, by comparison, it shows that I removed overall 3500 observations from the original taxitrip records, which takes over 0.24% of the dataset.
+```{r}
+#filter out outliers in passenger count.
+taxitrip_clean <- filter(taxitrip,passenger_count != 0)
+taxitrip_clean <- filter(taxitrip_clean,passenger_count < 8)
+
+#filter out outliers in long and lat.
+taxitrip_clean <- filter(taxitrip_clean,pickup_latitude <= 40.9147 & pickup_latitude >= 40.4775)
+taxitrip_clean <- filter(taxitrip_clean,dropoff_latitude <= 40.9147 & dropoff_latitude >= 40.4775)
+taxitrip_clean <- filter(taxitrip_clean,pickup_longitude <= -73.7062 & pickup_longitude >= -74.2782)
+taxitrip_clean <- filter(taxitrip_clean,dropoff_longitude <= -73.7062 & dropoff_longitude >= -74.2782)
+
+#filter out outliers in trip duration.
+mean(taxitrip_clean$trip_duration)
+sd(taxitrip_clean$trip_duration)
+taxitrip_clean <- filter(taxitrip_clean,trip_duration <= mean(trip_duration)+2*sd(trip_duration) & trip_duration >= mean(trip_duration)-2*sd(trip_duration))
+
+record_Removed <- nrow(taxitrip)-nrow(taxitrip_clean)
+record_Removed_pct <- (nrow(taxitrip)-nrow(taxitrip_clean))/nrow(taxitrip)
+paste(record_Removed_pct*100, "%", sep='')
+
+
+taxitrip_clean <- taxitrip_clean %>%
+        mutate(time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "Morning Rush Hour",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "Afternoon Rush Hour"))
+```
+
+Summary of cleaned trip data.
+```{r cleaning2, message = FALSE, warning = FALSE}
+kable(summary(taxitrip_clean),format = "html")%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  kable_classic(full_width = T, html_font = "Cambria")
+```
+### 2.3.3 Exploratory data analysis of taxitrip
+#### Create sample taxi trip subset
+Since the overall taxi trip record is too big, I create a random sample for exploratory data analysis that hard to visualize for large dataset.
+```{r}
+# Random sample subset of trip data for exploratory data analysis, set seed to be reproduced and create sample trip data.
+set.seed(123)
+taxitrip_sample <- sample_n(taxitrip_clean, 100000)
+
+```
+
+#### Trip data sample mapping
+Observing from the map,it shows point geometry scattered around city, it is obvious that Manhattan Island and Brooklyn of NYC burdens pretty much higher taxi ride demand. And drop off locations spreads farther than pick up locations.
+```{r}
+taxitrip_sample_geom_dropoff <- taxitrip_sample%>%
+  st_as_sf(coords = c("dropoff_longitude","dropoff_latitude"), crs = 4326, agr = "constant")
+
+taxitrip_sample_geom_pickup <- taxitrip_sample%>%
+  st_as_sf(coords = c("pickup_longitude","pickup_latitude"), crs = 4326, agr = "constant")
+
+dropoff <- ggplot()+
+  geom_sf(data = NY_Tracts)+
+  geom_sf(data = taxitrip_sample_geom_dropoff, show.legend = "point", size= .5, alpha = 0.5,color="#df65b0") +
+  labs(title = "Taxi trip general map - dropoff location", subtitle = "random sample of 100000 records") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=20))
+
+pickup <- ggplot()+
+  geom_sf(data = NY_Tracts)+
+  geom_sf(data = taxitrip_sample_geom_pickup, show.legend = "point", size= .5, alpha = 0.5,color="#3182bd") +
+  labs(title = "Taxi trip general map - pickup location", subtitle = "random sample of 100000 records") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=20))
+
+grid.arrange(dropoff,pickup, nrow = 1)
+```
+#### Univariate Analysis 
+  + For target variable **trip_duration**
+Learning from the histogram, the count of trip duration shows a long skew as the time consumption goes up. But if I use log transfermation to the trip duration, it shows a normal distribution pattern.
+```{r}
+original_his <- taxitrip_sample %>%
+  ggplot(aes(trip_duration)) +
+  geom_histogram(color = "#8856a7",fill = "#f1eef6", bins = 150) +
+    plotTheme()
+
+
+log_his <- taxitrip_sample %>%
+  ggplot(aes(trip_duration)) +
+  geom_histogram(color = "#8856a7",fill = "#f1eef6", bins = 150) +
+  scale_x_log10() +
+  scale_y_sqrt()+
+    plotTheme()
+
+grid.arrange(original_his,log_his, nrow = 1)
+```
+
+  + For target variable **passenger_count**
+Since the box plot of trip duration originally shows toooo many outliers, I made comparison between 
+```{r}
+normal_passct <- ggplot(taxitrip_clean,aes(x=as.factor(passenger_count), y=trip_duration, color = passenger_count))+
+geom_boxplot() +
+    theme(legend.position = "none") +
+    labs(title = "Trip Duration by Number of Passengers", x = "Number of passengers",y= "Trip duration")+
+    plotTheme()
+
+
+log_passct <- ggplot(taxitrip_clean,aes(x=as.factor(passenger_count), y=trip_duration, color = passenger_count))+
+geom_violin() +
+  scale_y_log10() + theme(legend.position = "none") +
+    labs(title = "Log of Trip Duration by Number of Passengers", x = "Number of passengers",y= "Trip duration")+
+    plotTheme()
+
+
+grid.arrange(normal_passct,log_passct, nrow = 1)
+```
+
+
+  + For target variable **store_and_fwd_flag**
+  This is a binary variable indicates whether the trip record was held in vehicle memory before sending to the vendor because the vehicle did not have a connection to the server,where Y=store and forward; N=not a store and forward trip.
+```{r}
+taxitrip_sample %>% 
+  group_by(store_and_fwd_flag) %>% 
+  count() %>% 
+  ggplot(aes(x=store_and_fwd_flag,y=n, fill=store_and_fwd_flag))+ 
+  geom_col()+
+  scale_fill_manual(values = palette2)+
+    plotTheme()
+```
+
+ + For target variable **Check or not**
+  This is a binary variable indicates whether the trip duration provided by the original dataset is true or not.Learning from the plot, it is **one hundred percent** that the trip duration is correct with the calculation from the time stamp.
+```{r}
+taxitrip_sample %>% 
+  group_by(check) %>% 
+  count() %>% 
+  ggplot(aes(x=check,y=n, fill=check))+ 
+  geom_col()+
+  scale_fill_manual(values = palette2)+
+    plotTheme()
+```
+  + For target variable **distance**
+```{r}
+dis <- taxitrip_sample%>%
+  ggplot(aes(x = WeekDay, y = distance)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Distance', title = 'Distance by day of a week')+
+    plotTheme()
+
+meandis <- taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  summarize(distancemean = mean(distance))%>%
+  ggplot(aes(x = WeekDay, y = distancemean)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean distance', title = 'Mean distance by day of a week')+
+    plotTheme()
+
+grid.arrange(dis,meandis, nrow = 1)
+```
+
+  + For target variable **Hour in a day**
+```{r}
+count <- taxitrip_sample%>%
+  group_by(hour)%>%
+  count()%>%
+  ggplot(aes(x = hour, y = n)) +
+  geom_bar(stat = 'identity', fill = 'steelblue') +
+  labs(x = 'Hour', y = 'trip counts', title = 'Trip count by hour in a day')+
+    plotTheme()
+
+meandur <- taxitrip_sample%>%
+  group_by(hour)%>%
+  mutate(duration = mean(trip_duration))%>%
+  dplyr::select(hour,duration)%>%
+  ggplot(aes(x = hour, y = duration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Hour', y = 'Mean of trip duration', title = 'Mean Trip duration by hour in a day')+
+    plotTheme()
+
+grid.arrange(count,meandur, nrow = 1)
+
+taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  summarize(meanduration = mean(trip_duration))%>%
+  ggplot(aes(x = WeekDay, y = meanduration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean duration', title = 'Mean duration by day of a week')+
+    plotTheme()
+```
+  + For target variable **time_of_day**
+```{r}
+ taxitrip_sample%>%
+  group_by(time_of_day)%>%
+  ggplot(aes(x =time_of_day, y = duration)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Mean distance', title = 'Mean distance by day of a week')+
+    plotTheme()
+```
+  + For target variable **Weekday in a week**
+```{r}
+ taxitrip_sample%>%
+  group_by(WeekDay)%>%
+  count()%>%
+  ggplot(aes(x =WeekDay, y = n)) +
+  geom_bar(stat = 'identity',fill = 'steelblue') +
+  labs(x = 'Day of a week', y = 'Trip count', title = 'Trip count by day of a week')+
+    plotTheme()
+```
+
+
+
+# 3.External Data
+## 3.1 Import weather data
+```{r}
+weather.Data <- 
+  riem_measures(station = "NYC", date_start = "2016-01-01", date_end = "2016-06-30")
+
+weather.Data.clean <- weather.Data%>%
+  dplyr::select(valid, tmpf, p01i, sknt)%>%
+  replace(is.na(.), 0) %>%
+    mutate(interval60 = ymd_h(substr(valid,1,13))) %>%
+    mutate(week = week(interval60),
+           dotw = lubridate::wday(interval60, label=TRUE)) %>%
+    group_by(interval60) %>%
+    summarize(Temperature = max(tmpf),
+              Precipitation = sum(p01i),
+              Wind_Speed = max(sknt)) %>%
+    mutate(Temperature = ifelse(Temperature == 0, 42, Temperature))
+
+grid.arrange(top = "Weather Data - NYC - Jan & June, 2016",
+  ggplot(weather.Data.clean, aes(interval60,Precipitation)) + geom_line(colour = "#045a8d") + 
+    labs(title="Percipitation", x="Hour", y="Percipitation") + plotTheme(),
+  ggplot(weather.Data.clean, aes(interval60,Wind_Speed)) + geom_line(colour = "#045a8d") + 
+    labs(title="Wind Speed", x="Hour", y="Wind Speed") + plotTheme(),
+  ggplot(weather.Data.clean, aes(interval60,Temperature)) + geom_line(colour = "#045a8d") + 
+    labs(title="Temperature", x="month", y="Temperature") + plotTheme())
+
+```
+
+
+
+
+```{r}
+sf_use_s2(FALSE)
+
+
+trip_join_census <- st_join(taxitrip_sample %>% 
+          filter(is.na(pickup_latitude) == FALSE &
+                   is.na(pickup_longitude) == FALSE &
+                   is.na(dropoff_latitude) == FALSE &
+                   is.na(dropoff_longitude) == FALSE) %>%
+          st_as_sf(., coords = c( "pickup_longitude","pickup_latitude"), crs = 4326),
+        NY_Tracts,
+        join=st_intersects,
+              left = TRUE) %>%
+  rename(pickup.Tract = GEOID) %>%
+  mutate(pickup_longitude = unlist(map(geometry, 1)),
+         pickup_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)%>%
+  st_as_sf(., coords = c( "dropoff_longitude", "dropoff_latitude"), crs =4326) %>%
+  st_join(., NY_Tracts,
+          join=st_intersects,
+          left = TRUE) %>%
+  rename(dropoff.Tract = GEOID)  %>%
+  mutate(dropoff_longitude = unlist(map(geometry, 1)),
+         dropoff_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)
+
+```
+
+
+
+```{r}
+trip_join_census %>%
+         group_by(interval60, pickup.Tract, time_of_day) %>%
+         tally()%>%
+  group_by(pickup.Tract, time_of_day)%>%
+  summarize(mean_trips = mean(n))%>%
+  ggplot()+
+  geom_histogram(aes(mean_trips), binwidth = 0.5)+
+  labs(title="Total Number of Hourly Trips Per Station. Chicago, May, 2018",
+       x="Number of trips", 
+       y="Frequency")+
+ facet_wrap(~time_of_day)+
+  plotTheme()
+```
+
+join `weather panel` with `census and trip panel`.
+
+```{r}
+ride.panel <- 
+  trip_join_census %>%
+  left_join(weather.Data.clean) %>%
+  filter(is.na(pickup.Tract) == FALSE) %>%
+  mutate(week = week(interval60),
+         dotw = lubridate::wday(interval60, label = TRUE)) %>%
+  filter(is.na(dropoff.Tract) == FALSE)
+
+ride.panel<- 
+  inner_join(ride.panel, clean_trancts_2016 %>%
+              as.data.frame()%>%
+              dplyr::select(-geometry), by = c("pickup.Tract" = "GEOID"))
+
+a <-na.omit(ride.panel)
+            
+```
+
+
+
+# Correlation between trip duration and features
+```{r}
+a%>%
+  dplyr::select(-RowID,-id,-pickup_latitude,-pickup_longitude,-pickup_datetime,-dropoff_latitude,-dropoff_longitude,-dropoff_datetime,-store_and_fwd_flag,-weekend,-WeekDay,-duration,-check,-time_of_day,-pickup.Tract,-dropoff.Tract,-vendor_id,)%>%
+  gather(Variable, Value, -trip_duration) %>% 
+   ggplot(aes(Value, trip_duration)) +
+     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+     facet_wrap(~Variable, ncol = 3, scales = "free") +
+     labs(title = "trip duration as a function of continuous variables") +
+     plotTheme()
+
+
+numericVars <- 
+  select_if(ride.panel, is.numeric) %>% na.omit()%>%
+  dplyr::select(-RowID,-pickup_latitude,-pickup_longitude,-dropoff_latitude,-dropoff_longitude,-vendor_id,-duration)
+
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
+
+
+
+corrplot(round(cor(numericVars), 1),p.mat = cor_pmat(numericVars), type = "lower", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+```{r}
+ride.panel %>%
+  mutate(Trip_Counter = 1) %>%
+    group_by(dotw,Precipitation) %>% 
+  summarize(Trip_Count = sum(Trip_Counter),
+            Percipitation = first(Precipitation)) %>%
+  filter(is.na(Percipitation)==FALSE)%>%
+  group_by(Trip_Count,Percipitation)%>%
+  mutate(isPercip = ifelse(Percipitation > 0,"Rain/Snow", "None")) %>%
+  group_by(isPercip) %>%
+  summarize(Mean_Trip_Count = mean(Trip_Count)) %>%
+    ggplot(aes(isPercip, Mean_Trip_Count)) + geom_bar(stat = "identity") +
+      labs(title="Does ridership vary with percipitation?",
+           x="Percipitation", y="Mean Trip Count") +
+      plotTheme()
+```
+
+
+# Model building
+
+```{r}
+inTrain <- createDataPartition(
+              y = paste(ride.panel$trip_duration), 
+              p = .75, list = FALSE)
+trip.training <- ride.panel[inTrain,] 
+trip.test <- ride.panel[-inTrain,]
+```
+
+
+
+```{r}
+reg1 <- 
+  lm(trip_duration ~  Precipitation + dotw + Temperature + weekend,  data=trip.training)
+
+
+trip.Test.weekNest <- 
+  trip.training %>%
+  nest(-week) 
+
+
+model_pred <- function(dat, fit){
+   pred <- predict(fit, newdata = dat)}
+
+
+week_predictions <- 
+  trip.Test.weekNest %>% 
+    mutate(A_Time_FE = map(.x = data, fit = reg1, .f = model_pred))%>% 
+    gather(Regression, Prediction, -data, -week) %>%
+    mutate(Observed = map(data, pull, trip_duration),
+           Absolute_Error = map2(Observed, Prediction,  ~ abs(.x - .y)),
+           MAE = map_dbl(Absolute_Error, mean, na.rm = TRUE),
+           sd_AE = map_dbl(Absolute_Error, sd, na.rm = TRUE))
+
+week_predictions
+```
+ 
+```{r}
+week_predictions %>%
+  dplyr::select(week, Regression, MAE) %>%
+  gather(Variable, MAE, -Regression, -week) %>%
+  ggplot(aes(week, MAE)) + 
+    geom_bar(aes(fill = Regression), position = "dodge", stat="identity") +
+    scale_fill_manual(values = palette5) +
+    labs(title = "Mean Absolute Errors by model specification and week") +
+  plotTheme()
+```
+ 
+ 
