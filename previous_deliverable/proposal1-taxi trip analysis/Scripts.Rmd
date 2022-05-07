@@ -1,0 +1,393 @@
+---
+title: "New york ride"
+author: "yybei"
+date: "2022/2/18"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: "hide"
+    code_download: true
+---
+
+# Load data
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup_13, cache=TRUE, message=FALSE}
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(tigris)
+library(tidycensus)
+library(viridis)
+library(riem)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(caret)
+library(RSocrata)
+library(data.table)
+library(pacman)
+library(geosphere)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+library(leaflet)
+library(stringr)
+library(rgdal)
+library(mapview)
+library(dplyr)
+
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(tigris)
+library(tidycensus)
+library(viridis)
+library(riem)
+library(gridExtra)
+library(knitr)
+library(mapview)
+library(kableExtra)
+library(RSocrata)
+library(tidyverse)
+library(gifski)
+library(RSocrata)
+library(spatstat)
+library(raster)
+library(spdep)
+library(FNN)
+library(gganimate)
+
+
+plotTheme <- theme(
+  plot.title =element_text(size=12),
+  plot.subtitle = element_text(size=8),
+  plot.caption = element_text(size = 6),
+  axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+  axis.text.y = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  # Set the entire chart region to blank
+  panel.background=element_blank(),
+  plot.background=element_blank(),
+  #panel.border=element_rect(colour="#F0F0F0"),
+  # Format the grid
+  panel.grid.major=element_line(colour="#D0D0D0",size=.2),
+  axis.ticks=element_blank())
+
+mapTheme <- theme(plot.title =element_text(size=12),
+                  plot.subtitle = element_text(size=8),
+                  plot.caption = element_text(size = 6),
+                  axis.line=element_blank(),
+                  axis.text.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks=element_blank(),
+                  axis.title.x=element_blank(),
+                  axis.title.y=element_blank(),
+                  panel.background=element_blank(),
+                  panel.border=element_blank(),
+                  panel.grid.major=element_line(colour = 'transparent'),
+                  panel.grid.minor=element_blank(),
+                  legend.direction = "vertical", 
+                  legend.position = "right",
+                  plot.margin = margin(1, 1, 1, 1, 'cm'),
+                  legend.key.height = unit(1, "cm"), legend.key.width = unit(0.2, "cm"))
+
+palette5 <- c("#eff3ff","#bdd7e7","#6baed6","#3182bd","#08519c")
+palette4 <- c("#D2FBD4","#92BCAB","#527D82","#123F5A")
+palette2 <- c("#6baed6","#08519c")
+
+options(tigris_class = "sf")
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+```
+
+
+
+Load census API key
+
+```{r install_census_API_key, warning = FALSE, include=FALSE, eval = TRUE}
+# Install Census API Key
+census_api_key("e79f3706b6d61249968c6ce88794f6f556e5bf3d", overwrite = TRUE)
+```
+
+
+Import Census Info
+```{r get_census, message=FALSE, warning=FALSE, cache=TRUE, results = 'hide'}
+tracts19 <-  
+  get_acs(geography = "tract", variables = c("B08301_001", #Means Of Transportation To Work,total
+                                             "B08301_002", #Means Of Transportation To Work,Car, truck, or van,
+                                             "B08301_010", #Means Of Transportation To Work, public transit
+                                             "B08301_016", #Means Of Transportation To Work, taxicab
+                                             
+                #travel time to work ----public transit        
+                                            
+                                             "B08134_067",  #pub Travel time to work, 30-35 min
+                                             "B08134_068",  #pub Travel time to work, 35-45 min
+                                             "B08134_069",  #pub Travel time to work, 45-60 min
+                                             "B08134_070",  #pub Travel time to work, >60 min
+                
+                 #travel time to work ----ride(car)        
+                                            
+                                             "B08134_017",  #car Travel time to work, 30-35 min
+                                             "B08134_018",  #car Travel time to work, 35-45 min
+                                             "B08134_019",  #car Travel time to work, 45-60 min
+                                             "B08134_020",  #car Travel time to work, >60 min
+                
+                #travel time to work ----ride(taxi)        
+                                            
+                                             "B08134_117",  #taxi Travel time to work, 30-35 min
+                                             "B08134_118",  #taxi Travel time to work, 35-45 min
+                                             "B08134_119",  #taxi Travel time to work, 45-60 min
+                                             "B08134_120",  #taxi Travel time to work, >60 min
+                                             
+                                            
+                                             "B01003_001",   #Total Population
+                                             "B19013_001",   #Median Household Income In The Past 12 Months
+                                             "B01002_001",   #Median Age
+                                             "C15010_001",   #Bachelor Degree or above
+                                             
+                #Race                        
+                                             "B02001_002", #White people
+                                             "B02001_003", #Black Or African American Alone
+                                             "B02001_004", #American Indian And Alaska Native Alone
+                                             "B02001_005", #Asian
+                                             
+                                             "B08111_017", #Num_Public Transportation_native
+                                             "B08111_018",  #Num_Public Transportation_Foreign born
+                
+                #rent
+                                              "B25059_001", #Upper Contract Rent
+                                              "B25057_001", #Lower Contract Rent
+                                              "B17005_002", #Income below poverty level
+                                              "B16010_003", # less than high school, in labor force
+                                              "B16010_016" ), # high school, in labor force
+                year=2019, state=36, geometry=T,output = "wide")
+                
+
+tracts2019 <- tracts19%>%
+  
+   rename( Total_means_towork = B08301_001E,
+           Car_towork = B08301_002E,
+           Public_trans_towork = B08301_010E,
+           Taxicab_towork = B08301_016E,
+           
+     
+          pub_traveltime_30_35 = B08134_067E,
+          pub_traveltime_35_45 = B08134_068E,
+          pub_traveltime_45_60 = B08134_069E,
+          pub_traveltime_60 = B08134_070E,
+          
+          car_traveltime_30_35 = B08134_017E,
+          car_traveltime_35_45 = B08134_018E,
+          car_traveltime_45_60 = B08134_019E,
+          car_traveltime_60 = B08134_020E,
+          
+          taxi_traveltime_30_35 = B08134_117E,
+          taxi_traveltime_35_45 = B08134_118E,
+          taxi_traveltime_45_60 = B08134_119E,
+          taxi_traveltime_60 = B08134_120E,
+          
+          
+          Total_Pop =  B01003_001E,
+          Median_income = B19013_001E,
+          Median_age = B01002_001E,
+          Bachelor_above = C15010_001E,
+          
+          White_American = B02001_002E,
+          Black_American = B02001_003E,
+          American_Indian = B02001_004E,
+          Asian = B02001_005E,
+          
+          public_trans_native = B08111_017E,
+          public_trans_foreign = B08111_018E,
+          
+          upper_rent = B25059_001E,
+          lower_rent = B25057_001E,
+          income_below_poverty = B17005_002E,
+          belowhigh_onemploy = B16010_003E,
+          abovehigh_onemploy = B16010_016E)%>%
+  
+  dplyr::select(Total_means_towork,Car_towork,Public_trans_towork,Taxicab_towork,
+         
+         pub_traveltime_30_35,pub_traveltime_35_45,pub_traveltime_45_60,pub_traveltime_60,
+         car_traveltime_30_35,car_traveltime_35_45,car_traveltime_45_60,car_traveltime_60,
+         taxi_traveltime_30_35,taxi_traveltime_35_45,taxi_traveltime_45_60,taxi_traveltime_60,
+         
+         Total_Pop,Median_income,Median_age,Bachelor_above,
+         White_American,Black_American,American_Indian,Asian,
+         public_trans_native,public_trans_foreign,
+         upper_rent,lower_rent,income_below_poverty,belowhigh_onemploy,abovehigh_onemploy,
+         GEOID,NAME,geometry)
+
+
+
+clean_trancts_2019 <- tracts2019%>%
+    st_transform('ESRI:102318')%>%
+  mutate(Pct_publictrans_towork = Public_trans_towork / Total_means_towork,
+         Pct_ride_towork = (Car_towork+Taxicab_towork) / Total_means_towork,
+         pub_traveltime_30_60 = pub_traveltime_30_35 + pub_traveltime_35_45 + pub_traveltime_45_60,
+         ride_traveltime_30_60 = car_traveltime_30_35 + car_traveltime_35_45 + car_traveltime_45_60 +
+                                taxi_traveltime_30_35 + taxi_traveltime_35_45 + taxi_traveltime_45_60,
+         ride_traveltime_60 = car_traveltime_60 + taxi_traveltime_60,
+         pct_bachelor = Bachelor_above / Total_Pop,
+         pct_white = White_American / Total_Pop,
+         pct_black = Black_American / Total_Pop,
+         pct_indian = American_Indian / Total_Pop,
+         pct_asian = Asian / Total_Pop,
+         pct_poverty = income_below_poverty / Total_Pop,
+         pct_onemployment = (belowhigh_onemploy + abovehigh_onemploy) / Total_Pop,
+         pct_pubtrans_native = public_trans_native / Public_trans_towork,
+         pct_pubtrans_foreign = public_trans_foreign / Public_trans_towork
+          )%>%
+  dplyr::select (-Total_means_towork,-Car_towork,-Public_trans_towork,-Taxicab_towork,
+                 -pub_traveltime_30_35,-pub_traveltime_35_45,-pub_traveltime_45_60,
+                 -car_traveltime_30_35,-car_traveltime_35_45,-car_traveltime_45_60,-car_traveltime_60,
+                 -taxi_traveltime_30_35,-taxi_traveltime_35_45,-taxi_traveltime_45_60,-taxi_traveltime_60,
+                 -Bachelor_above,
+                 -White_American,-Black_American,-American_Indian,-Asian,
+                 -public_trans_native,-public_trans_foreign,
+                 -income_below_poverty,-belowhigh_onemploy,-abovehigh_onemploy
+                 )
+
+setwd("D:\\Spring-Penn\\Capstone\\in progress\\YebeiYao_NY_taxi-trip-duration-analysis\\proposal1-taxi trip analysis")
+
+NYC_boundary <- st_read("Raw data/NYC Borough Boundaries.geojson")%>% st_transform('ESRI:102318')
+
+clean_trancts_2019_only <- st_intersection(clean_trancts_2019,st_union(NYC_boundary))
+
+
+NY_Tracts <- 
+  clean_trancts_2019_only %>%
+  as.data.frame() %>%
+  distinct(GEOID, .keep_all = TRUE) %>%
+  dplyr::select(GEOID, geometry) %>% 
+  st_sf
+
+```
+
+
+
+```{r ridership,warning = FALSE, message = FALSE}
+taxitrip <- st_read("Raw data/NY-Ridership.csv")%>%
+  dplyr::select(-vendor_id,-store_and_fwd_flag)
+
+# create sample trip
+taxitrip$passenger_count <-as.factor(taxitrip$passenger_count)
+taxitrip$trip_duration <-as.numeric(taxitrip$trip_duration)
+
+# Random sample subset of trip data for exploratory data analysis, set seed to be reproduceable
+set.seed(123)
+taxitrip_sample <- sample_n(taxitrip, 100000)
+
+NY_Tracts <- NY_Tracts %>%
+          st_transform(crs = 4326)
+
+
+
+sf_use_s2(FALSE)
+
+
+trip_join_census <- st_join(taxitrip_sample %>% 
+          filter(is.na(pickup_latitude) == FALSE &
+                   is.na(pickup_longitude) == FALSE &
+                   is.na(dropoff_latitude) == FALSE &
+                   is.na(dropoff_longitude) == FALSE) %>%
+          st_as_sf(., coords = c( "pickup_longitude","pickup_latitude"), crs = 4326),
+        NY_Tracts,
+        join=st_intersects,
+              left = TRUE) %>%
+  rename(Origin.Tract = GEOID) %>%
+  mutate(pickup_longitude = unlist(map(geometry, 1)),
+         pickup_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)%>%
+  st_as_sf(., coords = c( "dropoff_longitude", "dropoff_latitude"), crs =4326) %>%
+  st_join(., NY_Tracts,
+          join=st_intersects,
+          left = TRUE) %>%
+  rename(Destination.Tract = GEOID)  %>%
+  mutate(dropoff_longitude = unlist(map(geometry, 1)),
+         dropoff_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)
+
+
+trip_join_census <- st_join(taxitrip_sample %>% 
+          filter(is.na(pickup_latitude) == FALSE &
+                   is.na(pickup_longitude) == FALSE &
+                   is.na(dropoff_latitude) == FALSE &
+                   is.na(dropoff_longitude) == FALSE) %>%
+          st_as_sf(., coords = c( "pickup_longitude","pickup_latitude"), crs = 4326),
+        NY_Tracts,
+        join=st_intersects,
+              left = TRUE) %>%
+  rename(Origin.Tract = GEOID) %>%
+  mutate(pickup_longitude = unlist(map(geometry, 1)),
+         pickup_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)%>%
+  st_as_sf(., coords = c( "dropoff_longitude", "dropoff_latitude"), crs =4326) %>%
+  st_join(., NY_Tracts,
+          join=st_intersects,
+          left = TRUE) %>%
+  rename(Destination.Tract = GEOID)  %>%
+  mutate(dropoff_longitude = unlist(map(geometry, 1)),
+         dropoff_latitude = unlist(map(geometry, 2)))%>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)
+```
+```{r}
+#taxitrip_sample$pickup_hour <- hour(taxitrip_sample$pickup_datetime)
+#taxitrip_sample$pickup_week <- week(taxitrip_sample$pickup_datetime)
+#taxitrip_sample$pickup_month <- month(taxitrip_sample$pickup_datetime)
+
+  
+  #class(taxitrip_sample$pickup_datetime.stamp)
+  
+  taxitrip_sample$pickup_datetime.stamp <- as.POSIXct(paste(taxitrip_sample$pickup_datetime), format = "%Y-%m-%d %H:%M:%S", tz = "EST")
+  
+  taxitrip_sample$dropoff_datetime.stamp <- as.POSIXct(paste(taxitrip_sample$dropoff_datetime), format = "%Y-%m-%d %H:%M:%S", tz = "EST")
+  
+  taxitrip_sample <- taxitrip_sample%>%
+    dplyr::select(-pickup_datetime,-dropoff_datetime)
+  
+  taxitrip_sample_parse <- taxitrip_sample %>% 
+  mutate(interval60 = floor_date(ymd_hms(pickup_datetime.stamp), unit = "hour"),
+         week = week(interval60),
+         hour = hour(interval60),
+         dotw = lubridate::wday(interval60, label=TRUE))
+  
+  taxitrip_sample_parse$WeekDay <- weekdays(taxitrip_sample_parse$pickup_datetime.stamp)
+
+  taxitrip_sample_parse$weekend <- ifelse(taxitrip_sample_parse$WeekDay=="星期六" | taxitrip_sample_parse$WeekDay=="星期日","Weekend","not-Weekend")
+
+
+```
+
+```{r}
+weather.Data <- 
+  riem_measures(station = "NYC", date_start = "2016-01-01", date_end = "2016-06-30")
+
+weather.Data.clean <- weather.Data%>%
+  dplyr::select(valid, tmpf, p01i, sknt)%>%
+  replace(is.na(.), 0) %>%
+    mutate(interval60 = ymd_h(substr(valid,1,13))) %>%
+    mutate(week = week(interval60),
+           dotw = lubridate::wday(interval60, label=TRUE)) %>%
+    group_by(interval60) %>%
+    summarize(Temperature = max(tmpf),
+              Precipitation = sum(p01i),
+              Wind_Speed = max(sknt)) %>%
+    mutate(Temperature = ifelse(Temperature == 0, 42, Temperature))
+```
+
+
+
+
+ 
